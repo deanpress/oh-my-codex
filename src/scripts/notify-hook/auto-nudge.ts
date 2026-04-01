@@ -444,56 +444,17 @@ function resolveInvocationSessionId(payload) {
   ).trim();
 }
 
-
-function sanitizeTmuxToken(value) {
-  const cleaned = safeString(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return cleaned || 'unknown';
-}
-
-function buildExpectedManagedTmuxSessionName(cwd, sessionId) {
-  const parentPath = dirname(cwd);
-  const parentDir = basename(parentPath);
-  const dirName = basename(cwd);
-  const grandparentPath = dirname(parentPath);
-  const grandparentDir = basename(grandparentPath);
-  const repoDir = parentDir.endsWith('.omx-worktrees')
-    ? parentDir.slice(0, -'.omx-worktrees'.length)
-    : parentDir === 'worktrees' && grandparentDir === '.omx'
-      ? basename(dirname(grandparentPath))
-      : null;
-  const dirToken = repoDir
-    ? sanitizeTmuxToken(`${repoDir}-${dirName}`)
-    : sanitizeTmuxToken(dirName);
-  let branchToken = 'detached';
+function resolveCurrentTmuxContext() {
+  const paneId = safeString(process.env.TMUX_PANE || '').trim();
+  if (!paneId) return { paneId: '', sessionName: '' };
   try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd,
+    const sessionName = execFileSync('tmux', ['display-message', '-p', '-t', paneId, '#S'], {
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 2000,
     }).trim();
-    if (branch) branchToken = sanitizeTmuxToken(branch);
+    return { paneId, sessionName };
   } catch {
-    // best effort only
-  }
-  const sessionToken = sanitizeTmuxToken(safeString(sessionId).replace(/^omx-/, ''));
-  const name = `omx-${dirToken}-${branchToken}-${sessionToken}`;
-  return name.length > 120 ? name.slice(0, 120) : name;
-}
-
-function readCurrentTmuxSessionName() {
-  if (!process.env.TMUX) return '';
-  try {
-    return execFileSync('tmux', ['display-message', '-p', '#S'], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 2000,
-    }).trim();
-  } catch {
-    return '';
+    return { paneId, sessionName: '' };
   }
 }
 
@@ -546,12 +507,20 @@ async function isManagedOmxSessionForAutoNudge(cwd, payload) {
     if (safeString(sessionState.session_id).trim() !== invocationSessionId) return false;
     if (isSessionStale(sessionState)) return false;
 
+<<<<<<< HEAD
     const currentTmuxSession = readCurrentTmuxSessionName();
     if (currentTmuxSession) {
       const expectedTmuxSession = buildExpectedManagedTmuxSessionName(cwd, invocationSessionId);
       if (currentTmuxSession === expectedTmuxSession) return true;
     }
 
+=======
+    const currentTmux = resolveCurrentTmuxContext();
+    const storedPaneId = safeString(sessionState.tmux_pane_id || '').trim();
+    const storedSessionName = safeString(sessionState.tmux_session_name || '').trim();
+    if (storedPaneId) return currentTmux.paneId === storedPaneId;
+    if (storedSessionName) return currentTmux.sessionName === storedSessionName;
+>>>>>>> 2f7e2f4 (fix: bind auto-nudge to tmux session context)
     return processHasAncestorPid(sessionState.pid);
   } catch {
     return false;

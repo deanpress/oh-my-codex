@@ -407,6 +407,53 @@ describe('notify-hook auto-nudge', () => {
     });
   });
 
+  it('accepts detached OMX tmux sessions when the stored tmux session name matches the current tmux session', async () => {
+    await withTempWorkingDir(async (cwd) => {
+      const omxDir = join(cwd, '.omx');
+      const stateDir = join(omxDir, 'state');
+      const logsDir = join(omxDir, 'logs');
+      const codexHome = join(cwd, 'codex-home');
+      const fakeBinDir = join(cwd, 'fake-bin');
+      const tmuxLogPath = join(cwd, 'tmux.log');
+
+      await mkdir(logsDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await mkdir(codexHome, { recursive: true });
+      await mkdir(fakeBinDir, { recursive: true });
+
+      await writeJson(join(codexHome, '.omx-config.json'), {
+        autoNudge: { enabled: true, delaySec: 0, stallMs: 0 },
+      });
+
+      await writeJson(join(stateDir, 'session.json'), {
+        session_id: 'sess-detached',
+        started_at: new Date().toISOString(),
+        cwd,
+        pid: process.pid,
+        platform: process.platform,
+        pid_start_ticks: readLinuxStartTicks(process.pid),
+        pid_cmdline: readLinuxCmdline(process.pid),
+        tmux_session_name: 'devsess',
+      });
+
+      await writeFile(join(fakeBinDir, 'tmux'), buildFakeTmux(tmuxLogPath));
+      await chmod(join(fakeBinDir, 'tmux'), 0o755);
+
+      const result = runNotifyHook(cwd, fakeBinDir, codexHome, {
+        'session-id': 'sess-detached',
+        'last-assistant-message': 'If you want, I can keep going from here.',
+      }, {
+        OMX_SESSION_ID: 'sess-detached',
+        OMX_TEST_UNMANAGED_SESSION: '1',
+      });
+      assert.equal(result.status, 0, `hook failed: ${result.stderr || result.stdout}`);
+
+      const tmuxLog = await readFile(tmuxLogPath, 'utf-8');
+      assert.match(tmuxLog, /display-message -p #S/);
+      assert.match(tmuxLog, /send-keys -t %99 -l yes, proceed \[OMX_TMUX_INJECT\]/);
+    });
+  });
+
   it('auto-nudges from active mode state by upgrading an anchored shell pane to the sibling codex pane', async () => {
     await withTempWorkingDir(async (cwd) => {
       const omxDir = join(cwd, '.omx');

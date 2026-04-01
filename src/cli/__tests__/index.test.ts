@@ -277,6 +277,16 @@ describe("buildNotifyFallbackWatcherEnv", () => {
     assert.equal(env.TMUX, undefined);
     assert.equal(env.TMUX_PANE, undefined);
   });
+
+  it("propagates OMX_SESSION_ID to the watcher env when provided", () => {
+    const env = buildNotifyFallbackWatcherEnv(
+      { HOME: "/tmp/home", TMUX: "sock,1,0", TMUX_PANE: "%3" },
+      { sessionId: "sess-123" },
+    );
+    assert.equal(env.OMX_SESSION_ID, "sess-123");
+    assert.equal(env.TMUX, undefined);
+    assert.equal(env.TMUX_PANE, undefined);
+  });
 });
 
 describe("buildNotifyTempStartupMessages", () => {

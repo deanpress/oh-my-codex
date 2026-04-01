@@ -50,6 +50,7 @@ import {
 import {
   readSessionState,
   writeSessionStart,
+  updateSessionStateSync,
   writeSessionEnd,
   resetSessionMetrics,
 } from "../hooks/session.js";
@@ -1561,6 +1562,19 @@ export function buildNotifyTempStartupMessages(
   return { infoLines, warningLines };
 }
 
+function resolveCurrentTmuxSessionContext(): { tmuxSessionName?: string; tmuxPaneId?: string } {
+  const tmuxPaneId = process.env.TMUX_PANE?.trim();
+  if (!tmuxPaneId) return {};
+  try {
+    const tmuxSessionName = execFileSync('tmux', ['display-message', '-p', '-t', tmuxPaneId, '#S'], {
+      encoding: 'utf-8',
+    }).trim();
+    return { tmuxSessionName: tmuxSessionName || undefined, tmuxPaneId };
+  } catch {
+    return { tmuxPaneId };
+  }
+}
+
 export function buildNotifyFallbackWatcherEnv(
   env: NodeJS.ProcessEnv = process.env,
   options: {
@@ -1613,7 +1627,7 @@ ${launchAppendix}`
 
   // 2. Write session state
   await resetSessionMetrics(cwd);
-  await writeSessionStart(cwd, sessionId);
+  await writeSessionStart(cwd, sessionId, resolveCurrentTmuxSessionContext());
 
   // 3. Start notify fallback watcher (best effort)
   try {
@@ -1801,6 +1815,7 @@ function runCodex(
     const tmuxSessionId = `omx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const sessionName = buildTmuxSessionName(cwd, tmuxSessionId);
     let createdDetachedSession = false;
+    let detachedCodexPaneId: string | null = null;
     let registeredHookTarget: string | null = null;
     let registeredHookName: string | null = null;
     let registeredClientAttachedHookName: string | null = null;
@@ -1823,7 +1838,12 @@ function runCodex(
         });
         if (step.name === "new-session") {
           createdDetachedSession = true;
-          parsePaneIdFromTmuxOutput(output || "");
+          detachedCodexPaneId = parsePaneIdFromTmuxOutput(output || "");
+          if (detachedCodexPaneId) {
+            updateSessionStateSync(cwd, { tmux_session_name: sessionName, tmux_pane_id: detachedCodexPaneId });
+          } else {
+            updateSessionStateSync(cwd, { tmux_session_name: sessionName });
+          }
         }
         if (step.name === "split-and-capture-hud-pane") {
           const hudPaneId = parsePaneIdFromTmuxOutput(output || "");

@@ -7,7 +7,7 @@
 
 import { readFile, writeFile, mkdir, unlink, appendFile } from 'fs/promises';
 import { join } from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { omxStateDir, omxLogsDir } from '../utils/paths.js';
 
 export interface SessionState {
@@ -18,6 +18,8 @@ export interface SessionState {
   platform?: NodeJS.Platform;
   pid_start_ticks?: number;
   pid_cmdline?: string;
+  tmux_session_name?: string;
+  tmux_pane_id?: string;
 }
 
 const SESSION_FILE = 'session.json';
@@ -176,7 +178,11 @@ export function isSessionStale(
 /**
  * Write session start state.
  */
-export async function writeSessionStart(cwd: string, sessionId: string): Promise<void> {
+export async function writeSessionStart(
+  cwd: string,
+  sessionId: string,
+  options: { tmuxSessionName?: string; tmuxPaneId?: string } = {},
+): Promise<void> {
   const stateDir = omxStateDir(cwd);
   await mkdir(stateDir, { recursive: true });
   const linuxIdentity = process.platform === 'linux'
@@ -191,6 +197,8 @@ export async function writeSessionStart(cwd: string, sessionId: string): Promise
     platform: process.platform,
     pid_start_ticks: linuxIdentity?.startTicks,
     pid_cmdline: linuxIdentity?.cmdline ?? undefined,
+    tmux_session_name: options.tmuxSessionName || undefined,
+    tmux_pane_id: options.tmuxPaneId || undefined,
   };
 
   await writeFile(sessionPath(cwd), JSON.stringify(state, null, 2));
@@ -200,6 +208,25 @@ export async function writeSessionStart(cwd: string, sessionId: string): Promise
     pid: process.pid,
     timestamp: state.started_at,
   });
+}
+
+export async function updateSessionState(cwd: string, patch: Partial<SessionState>): Promise<void> {
+  const current = await readSessionState(cwd);
+  if (!current) return;
+  const next: SessionState = { ...current, ...patch };
+  await writeFile(sessionPath(cwd), JSON.stringify(next, null, 2));
+}
+
+export function updateSessionStateSync(cwd: string, patch: Partial<SessionState>): void {
+  const path = sessionPath(cwd);
+  if (!existsSync(path)) return;
+  try {
+    const current = JSON.parse(readFileSync(path, 'utf-8')) as SessionState;
+    const next: SessionState = { ...current, ...patch };
+    writeFileSync(path, JSON.stringify(next, null, 2));
+  } catch {
+    // best effort
+  }
 }
 
 /**
