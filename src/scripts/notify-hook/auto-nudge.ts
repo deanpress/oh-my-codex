@@ -507,20 +507,11 @@ async function isManagedOmxSessionForAutoNudge(cwd, payload) {
     if (safeString(sessionState.session_id).trim() !== invocationSessionId) return false;
     if (isSessionStale(sessionState)) return false;
 
-<<<<<<< HEAD
-    const currentTmuxSession = readCurrentTmuxSessionName();
-    if (currentTmuxSession) {
-      const expectedTmuxSession = buildExpectedManagedTmuxSessionName(cwd, invocationSessionId);
-      if (currentTmuxSession === expectedTmuxSession) return true;
-    }
-
-=======
     const currentTmux = resolveCurrentTmuxContext();
     const storedPaneId = safeString(sessionState.tmux_pane_id || '').trim();
     const storedSessionName = safeString(sessionState.tmux_session_name || '').trim();
     if (storedPaneId) return currentTmux.paneId === storedPaneId;
     if (storedSessionName) return currentTmux.sessionName === storedSessionName;
->>>>>>> 2f7e2f4 (fix: bind auto-nudge to tmux session context)
     return processHasAncestorPid(sessionState.pid);
   } catch {
     return false;
